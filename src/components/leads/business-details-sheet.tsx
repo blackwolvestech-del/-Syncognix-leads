@@ -62,10 +62,13 @@ export function BusinessDetailsSheet({
   business: selected,
   onOpenChange,
   footer,
+  children,
 }: {
   business: BusinessDetails | null
   onOpenChange: (open: boolean) => void
   footer?: React.ReactNode
+  /** Extra sections (prospect analysis, decision maker…) shown before Source. */
+  children?: React.ReactNode
 }) {
   // Keep showing the last business while the panel animates closed.
   const [business, setBusiness] = useState(selected)
@@ -130,6 +133,8 @@ export function BusinessDetailsSheet({
                   </Row>
                 </dl>
               </section>
+
+              {children}
 
               <section aria-labelledby="details-source">
                 <h3 id="details-source" className="text-xs font-medium tracking-wide text-muted-foreground uppercase">

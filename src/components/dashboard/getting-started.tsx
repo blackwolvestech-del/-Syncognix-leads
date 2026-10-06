@@ -3,15 +3,21 @@ import { SectionCard } from "@/components/shared/section-card"
 import { cn } from "@/lib/utils"
 
 const laterSteps = [
-  { title: "Find business emails", done: false },
   { title: "Analyze lead quality", done: false },
   { title: "Generate outreach", done: false },
 ]
 
-export function GettingStarted({ hasSearched }: { hasSearched: boolean }) {
+export function GettingStarted({
+  hasSearched,
+  hasEmails,
+}: {
+  hasSearched: boolean
+  hasEmails: boolean
+}) {
   const steps = [
     { title: "Create your account", done: true },
     { title: "Search for businesses", done: hasSearched },
+    { title: "Find business emails", done: hasEmails },
     ...laterSteps,
   ]
   const completed = steps.filter((step) => step.done).length

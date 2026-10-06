@@ -29,6 +29,12 @@ import { searchNominatimBusinesses } from "./search-nominatim-businesses"
 import { searchOverpass } from "./search-overpass"
 import { TtlCache } from "./ttl-cache"
 
+/** The search result before the route adds per-user data and prospect scores. */
+export type BusinessSearchOutcome = Omit<
+  BusinessSearchSuccessResponse,
+  "businesses" | "savedOsmIds" | "enrichments"
+> & { businesses: BusinessSearchResult[] }
+
 const PARTIAL_NOTICE =
   "Some businesses may be missing because the OpenStreetMap search server is busy. Try again later for more complete results."
 
@@ -54,7 +60,7 @@ const resultCache = new TtlCache<CachedResults>(RESULT_CACHE_TTL_MS, RESULT_CACH
  */
 export async function searchBusinesses(
   query: BusinessSearchQuery
-): Promise<Omit<BusinessSearchSuccessResponse, "savedOsmIds">> {
+): Promise<BusinessSearchOutcome> {
   // Resolve the category before any network call so unsupported types cost nothing.
   const category = resolveBusinessCategory(query.businessType)
   if (!category) {

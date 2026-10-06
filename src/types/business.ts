@@ -1,3 +1,5 @@
+import type { LeadEnrichment, ProspectScore } from "./enrichment"
+
 export type OsmElementType = "node" | "way" | "relation"
 
 export type BusinessDataSource = "nominatim" | "overpass"
@@ -26,6 +28,9 @@ export interface BusinessSearchResult {
   latitude: number | null
   longitude: number | null
 
+  /** True when OpenStreetMap lists a brand for it (a chain location). */
+  chain?: boolean
+
   country: "United States"
   countryCode: "US"
 }
@@ -47,12 +52,15 @@ export interface UsLocation {
   countryCode: "US"
 }
 
+/** A search result with its prospect score (see lib/scoring/prospect-score.ts). */
+export type ScoredBusiness = BusinessSearchResult & { prospect: ProspectScore }
+
 export interface BusinessSearchSuccessResponse {
   success: true
   query: BusinessSearchQuery & { normalizedBusinessType: string }
   searchLocation: UsLocation
   count: number
-  businesses: BusinessSearchResult[]
+  businesses: ScoredBusiness[]
   meta: {
     provider: string
     radiusMeters: number
@@ -67,6 +75,8 @@ export interface BusinessSearchSuccessResponse {
   }
   /** osmIds from these results the signed-in user has already saved. */
   savedOsmIds: string[]
+  /** Stored decision-maker data the user already has for these results. */
+  enrichments: LeadEnrichment[]
 }
 
 export interface BusinessSearchErrorResponse {

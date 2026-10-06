@@ -9,7 +9,10 @@ import { FadeIn } from "@/components/shared/motion"
 import { PageHeader } from "@/components/shared/page-header"
 import { requireUser } from "@/lib/auth/user"
 import { getCategoryLabel } from "@/lib/business-search/normalize-category"
+import { getEnrichmentsByBusinessIds } from "@/lib/enrichment/cache"
 import { getLeadsPage } from "@/lib/leads/get-leads"
+import { scoreProspect } from "@/lib/scoring/prospect-score"
+import { createClient } from "@/lib/supabase/server"
 
 export const metadata: Metadata = { title: "Leads" }
 
@@ -42,14 +45,26 @@ export default async function LeadsPage(props: PageProps<"/leads">) {
   const total = result.status === "ok" ? result.total : 0
   const rows =
     result.status === "ok"
-      ? result.leads.map((lead) => ({ ...lead, categoryLabel: getCategoryLabel(lead.category) }))
+      ? result.leads.map((lead) => ({
+          ...lead,
+          categoryLabel: getCategoryLabel(lead.category),
+          prospect: scoreProspect({ ...lead, chain: lead.is_chain }),
+        }))
       : []
+  // Decision-maker data is linked to leads by business id (read-only here).
+  const enrichments = rows.length
+    ? await getEnrichmentsByBusinessIds(
+        await createClient(),
+        user.id,
+        rows.map((lead) => lead.osm_id)
+      )
+    : []
 
   return (
     <div className="space-y-8">
       <PageHeader
         title="Leads"
-        description="Businesses you've saved from your searches."
+        description="Businesses you've saved, with their decision makers and verified emails."
         actions={
           <Button asChild>
             <Link href="/find-leads">
@@ -119,7 +134,10 @@ export default async function LeadsPage(props: PageProps<"/leads">) {
             )
           )}
 
-          {rows.length > 0 && <LeadsTable leads={rows} />}
+          {rows.length > 0 && (
+            // Keyed so each page of leads starts from its own stored enrichment data.
+            <LeadsTable key={`${page}:${query}`} leads={rows} enrichments={enrichments} />
+          )}
 
           {result.status === "ok" && total > 0 && (
             <div className="flex items-center justify-between gap-3 border-t px-5 py-3 text-xs text-muted-foreground">

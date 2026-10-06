@@ -42,6 +42,15 @@ const NEIGHBORING_NON_US_REGIONS = new Set([
   "tamaulipas", "tamps.",
 ])
 
+/** "Texas" or "tx" → "TX"; null when the value isn't a US state. */
+export function usStateAbbreviation(value: string | null | undefined) {
+  if (!value) return null
+  const text = key(value)
+  if (text in US_STATES) return US_STATES[text]
+  const upper = text.toUpperCase()
+  return US_STATE_ABBREVIATIONS.has(upper) ? upper : null
+}
+
 const CANADIAN_POSTCODE = /^[a-z]\d[a-z]\s?\d[a-z]\d$/i
 export const US_ZIP_CODE = /^\d{5}(?:-\d{4})?$/
 

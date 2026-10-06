@@ -11,19 +11,22 @@ import { Stagger, StaggerItem } from "@/components/shared/motion"
 import { PageHeader } from "@/components/shared/page-header"
 import { ToastOnMount } from "@/components/shared/toast-on-mount"
 import { requireUser } from "@/lib/auth/user"
+import { getEnrichmentCounts } from "@/lib/enrichment/cache"
 import { getLeadCount } from "@/lib/leads/get-leads"
 import { getRecentSearches } from "@/lib/leads/searches"
+import { createClient } from "@/lib/supabase/server"
 
 export const metadata: Metadata = { title: "Dashboard" }
 
-// Email discovery, verification and scoring arrive in later steps.
+// AI lead-quality analysis arrives in a later step.
 const LATER = "Not analyzed yet"
 
 export default async function DashboardPage({ searchParams }: PageProps<"/dashboard">) {
   const [user, params] = await Promise.all([requireUser(), searchParams])
-  const [leadCount, recentSearches] = await Promise.all([
+  const [leadCount, recentSearches, contacts] = await Promise.all([
     getLeadCount(user.id),
     getRecentSearches(user.id),
+    getEnrichmentCounts(await createClient(), user.id),
   ])
 
   const metrics = [
@@ -33,8 +36,18 @@ export default async function DashboardPage({ searchParams }: PageProps<"/dashbo
       icon: Building2,
       hint: leadCount ? "Saved from your searches" : "No saved leads yet",
     },
-    { title: "Emails Found", value: 0, icon: MailSearch, hint: LATER },
-    { title: "Verified Emails", value: 0, icon: BadgeCheck, hint: LATER },
+    {
+      title: "Emails Found",
+      value: contacts.emailsFound,
+      icon: MailSearch,
+      hint: contacts.emailsFound ? "Work emails from decision-maker lookups" : "No lookups yet",
+    },
+    {
+      title: "Verified Emails",
+      value: contacts.verifiedEmails,
+      icon: BadgeCheck,
+      hint: contacts.verifiedEmails ? "Verified as deliverable" : "No verified emails yet",
+    },
     { title: "High Quality Leads", value: 0, icon: Sparkles, hint: LATER },
   ]
 
@@ -67,7 +80,10 @@ export default async function DashboardPage({ searchParams }: PageProps<"/dashbo
           <RecentSearches searches={recentSearches} />
         </StaggerItem>
         <StaggerItem>
-          <GettingStarted hasSearched={recentSearches.length > 0 || Boolean(leadCount)} />
+          <GettingStarted
+            hasSearched={recentSearches.length > 0 || Boolean(leadCount)}
+            hasEmails={contacts.emailsFound > 0}
+          />
         </StaggerItem>
         <StaggerItem className="lg:col-span-2">
           <LeadQualityOverview />

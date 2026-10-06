@@ -10,12 +10,15 @@ import {
 } from "@/lib/business-search/normalize-category"
 import { searchBusinesses } from "@/lib/business-search/search-businesses"
 import { validateSearchRequest } from "@/lib/business-search/validate-request"
+import { getEnrichmentsByBusinessIds } from "@/lib/enrichment/cache"
 import { getSavedOsmIds } from "@/lib/leads/save-leads"
 import { recordSearch } from "@/lib/leads/searches"
+import { scoreProspect } from "@/lib/scoring/prospect-score"
 import type {
   BusinessSearchErrorResponse,
   BusinessSearchSuccessResponse,
 } from "@/types/business"
+import type { LeadEnrichment } from "@/types/enrichment"
 
 // searchBusinesses caps itself at SEARCH_DEADLINE_MS (50s), under this limit.
 export const maxDuration = 60
@@ -81,14 +84,15 @@ export async function POST(request: Request) {
 
     // Results are only saved when the user chooses to (saveLeadsAction).
     // Here we just flag which ones they already have and log the search.
+    // Stored decision-maker data is attached too (read-only: searching never
+    // calls an enrichment provider).
     let savedOsmIds: string[] = []
+    let enrichments: LeadEnrichment[] = []
     if (userId) {
-      ;[savedOsmIds] = await Promise.all([
-        getSavedOsmIds(
-          supabase,
-          userId,
-          result.businesses.map((business) => business.osmId)
-        ),
+      const osmIds = result.businesses.map((business) => business.osmId)
+      ;[savedOsmIds, enrichments] = await Promise.all([
+        getSavedOsmIds(supabase, userId, osmIds),
+        getEnrichmentsByBusinessIds(supabase, userId, osmIds),
         recordSearch(supabase, userId, {
           businessType: getCategoryLabel(result.query.normalizedBusinessType),
           location: query.location,
@@ -97,7 +101,15 @@ export async function POST(request: Request) {
       ])
     }
 
-    const response: BusinessSearchSuccessResponse = { ...result, savedOsmIds }
+    const response: BusinessSearchSuccessResponse = {
+      ...result,
+      businesses: result.businesses.map((business) => ({
+        ...business,
+        prospect: scoreProspect(business),
+      })),
+      savedOsmIds,
+      enrichments,
+    }
     return Response.json(response, { headers: NO_STORE })
   } catch (error) {
     logBusinessSearchError(error)

@@ -7,6 +7,9 @@ import type { Database } from "@/types/database"
 /** Postgres/PostgREST codes for "table doesn't exist". */
 export const MISSING_TABLE_CODES = new Set(["42P01", "PGRST205"])
 
+/** Postgres/PostgREST codes for "column doesn't exist". */
+const UNKNOWN_COLUMN_CODES = new Set(["42703", "PGRST204"])
+
 const SAVE_FAILED = "We couldn't save these leads. Please try again."
 const NOT_SET_UP =
   "Leads can't be saved because the leads table hasn't been set up yet. Run the leads migration in Supabase."
@@ -43,12 +46,24 @@ export async function saveLeads(
     search_business_type: search.businessType,
     search_location: search.location,
   }))
+  // Chain flag for the prospect score (column added by the 20261003 migration).
+  const rowsWithChain = rows.map((row, index) => ({
+    ...row,
+    is_chain: businesses[index].chain ?? null,
+  }))
 
   // ON CONFLICT DO NOTHING: only newly inserted rows come back.
-  const { data, error } = await supabase
-    .from("leads")
-    .upsert(rows, { onConflict: "user_id,osm_id", ignoreDuplicates: true })
-    .select("osm_id")
+  const insert = (values: typeof rows | typeof rowsWithChain) =>
+    supabase
+      .from("leads")
+      .upsert(values, { onConflict: "user_id,osm_id", ignoreDuplicates: true })
+      .select("osm_id")
+
+  let { data, error } = await insert(rowsWithChain)
+  // Before that migration is applied the column doesn't exist; saving must still work.
+  if (error && UNKNOWN_COLUMN_CODES.has(error.code ?? "")) {
+    ;({ data, error } = await insert(rows))
+  }
 
   if (error) {
     console.error(`[leads] save failed: ${error.code ?? "unknown"} ${error.message}`)

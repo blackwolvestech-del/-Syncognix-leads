@@ -1,6 +1,6 @@
 # Syncognix Leads
 
-Lead intelligence and outreach platform. **Step 1** — authentication, protected app shell and dashboard. **Step 2** — US business search (OpenStreetMap), selecting and saving businesses as leads, and a searchable Leads list.
+Lead intelligence and outreach platform. **Step 1** — authentication, protected app shell and dashboard. **Step 2** — US business search (OpenStreetMap), selecting and saving businesses as leads, and a searchable Leads list. **Step 3** — prospect scoring, decision-maker lookup (Prospeo) and email verification (Hunter), both only on request and cached in Supabase. See [docs/step-3-enrichment.md](docs/step-3-enrichment.md).
 
 ## Stack
 
@@ -21,6 +21,9 @@ Next.js 16 (App Router, Turbopack) · React 19 · TypeScript · Tailwind CSS v4 
    - `20260930000000_create_profiles.sql` — `profiles`, RLS, and a trigger that creates a profile on sign-up.
    - `20261001000000_create_leads.sql` — `leads`, RLS, and the `unique (user_id, osm_id)` duplicate guard.
    - `20261002000000_leads_source_and_searches.sql` — lead `source`/`country` columns and the `searches` history table (dashboard "Recent searches").
+   - `20261003000000_enrichment_and_api_usage.sql` — `lead_enrichments` (decision-maker and verification cache), `api_usage`, and `leads.is_chain`.
+
+   Optional, for Step 3: add `PROSPEO_API_KEY` and `HUNTER_API_KEY` to `.env.local` (server-side only; see `.env.example`). Without them the app works as before and those two features show "not configured".
 4. **Configure Auth URLs** (Authentication → URL Configuration):
    - Site URL: `http://localhost:3000` (your production URL later)
    - Redirect URLs: `http://localhost:3000/auth/confirm`

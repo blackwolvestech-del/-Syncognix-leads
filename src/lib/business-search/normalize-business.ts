@@ -95,6 +95,8 @@ export function normalizeBusiness(
     postcode,
     address: buildAddress(street, city, state, postcode),
     category: categoryId,
+    // OSM marks chain locations with brand tags (e.g. brand:wikidata=Q...).
+    chain: Boolean(firstTag(tags, ["brand:wikidata", "brand"])),
     ...coordinates(element),
     country: "United States",
     countryCode: "US",

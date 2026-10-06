@@ -1,5 +1,5 @@
 import type { Metadata } from "next"
-import { BadgeCheck, Bot, Send, type LucideIcon } from "lucide-react"
+import { Bot, Send, type LucideIcon } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { FadeIn } from "@/components/shared/motion"
 import { PageHeader } from "@/components/shared/page-header"
@@ -8,16 +8,13 @@ import { AppearanceSettings } from "@/components/settings/appearance-settings"
 import { ProfileForm } from "@/components/settings/profile-form"
 import { SettingsSection } from "@/components/settings/settings-section"
 import { SignOutButton } from "@/components/settings/sign-out-button"
+import { UsageSection } from "@/components/settings/usage-section"
 import { requireUser } from "@/lib/auth/user"
+import { getMonthlyUsage } from "@/lib/enrichment/usage"
 
 export const metadata: Metadata = { title: "Settings" }
 
 const integrations: { title: string; description: string; icon: LucideIcon }[] = [
-  {
-    title: "Email Verification",
-    description: "Check deliverability before you reach out, so bounces never hurt your domain.",
-    icon: BadgeCheck,
-  },
   {
     title: "AI Provider",
     description: "Connect a model to analyze businesses and draft personalized outreach.",
@@ -32,6 +29,7 @@ const integrations: { title: string; description: string; icon: LucideIcon }[] =
 
 export default async function SettingsPage() {
   const user = await requireUser()
+  const usage = await getMonthlyUsage(user.id)
 
   return (
     <div className="space-y-8">
@@ -65,9 +63,17 @@ export default async function SettingsPage() {
         </SettingsSection>
 
         <SettingsSection
+          id="usage"
+          title="Usage"
+          description="Decision-maker lookups and email verifications you've run this month."
+        >
+          <UsageSection usage={usage} />
+        </SettingsSection>
+
+        <SettingsSection
           id="integrations"
           title="Integrations"
-          description="Connect the services that power lead enrichment and outreach."
+          description="More services for analysis and outreach."
         >
           <ul className="divide-y">
             {integrations.map(({ title, description, icon: Icon }) => (
