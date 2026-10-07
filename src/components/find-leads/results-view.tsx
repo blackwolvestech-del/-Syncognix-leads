@@ -11,8 +11,10 @@ import {
   Eye,
   Loader2,
   Search,
+  ScanSearch,
   SearchX,
   ShieldCheck,
+  SlidersHorizontal,
   TriangleAlert,
   UserRoundSearch,
   X,
@@ -22,13 +24,6 @@ import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
-import {
   Table,
   TableBody,
   TableCell,
@@ -37,6 +32,14 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
+import {
+  AnalysisCell,
+  AnalysisSummarySection,
+  type AnalysisCellProps,
+} from "@/components/analysis/analysis-cell"
+import { AnalysisFilterBar } from "@/components/analysis/analysis-filters"
+import { AnalysisReportSheet } from "@/components/analysis/analysis-report-sheet"
+import { useAnalysis } from "@/components/analysis/use-analysis"
 import { ConfirmActionDialog } from "@/components/enrichment/confirm-action-dialog"
 import {
   DecisionMakerCell,
@@ -44,13 +47,23 @@ import {
   type DecisionMakerProps,
 } from "@/components/enrichment/decision-maker"
 import { ScoreBadge, ScoreReasons, TierLabel } from "@/components/enrichment/prospect-score"
-import { useEnrichment, type BulkProgress } from "@/components/enrichment/use-enrichment"
+import { useEnrichment } from "@/components/enrichment/use-enrichment"
 import { PhoneLink, WebsiteLink, cityState } from "@/components/leads/business-cells"
 import {
   BusinessDetailsSheet,
   type BusinessDetails,
 } from "@/components/leads/business-details-sheet"
 import { EmptyState } from "@/components/shared/empty-state"
+import { FilterSelect } from "@/components/shared/filter-select"
+import {
+  ANALYSIS_SORT_LABELS,
+  NO_FILTERS,
+  compareByAnalysis,
+  filtersActive as analysisFiltersActive,
+  matchesFilters,
+  type AnalysisFilters,
+  type AnalysisSortKey,
+} from "@/lib/analysis/filters"
 import { lowerFirst } from "@/lib/format"
 import { cn } from "@/lib/utils"
 import type {
@@ -62,14 +75,16 @@ import type {
 import type { EnrichmentStatus } from "@/types/enrichment"
 
 type Presence = "any" | "has" | "missing"
-type SortKey = "score-desc" | "score-asc" | "name" | "relevance"
+type SortKey = "score-desc" | "score-asc" | "name" | "relevance" | AnalysisSortKey
 type MinScore = "0" | "60" | "80"
 type EnrichmentFilter = "all" | "not_enriched" | "enriched" | "partial" | "no_match"
 
 // OpenStreetMap has no ratings or review counts, so there is nothing to sort by there.
+// The Step 4 sorts only order analyzed businesses; the rest follow, by prospect score.
 const SORT_LABELS: Record<SortKey, string> = {
   "score-desc": "Highest prospect score",
   "score-asc": "Lowest prospect score",
+  ...ANALYSIS_SORT_LABELS,
   name: "Business name A–Z",
   relevance: "Closest to search area",
 }
@@ -140,11 +155,19 @@ export function ResultsView({
   const [selected, setSelected] = useState<ReadonlySet<string>>(new Set())
   const [saving, setSaving] = useState<"selected" | "all" | "single" | null>(null)
   const [viewingId, setViewingId] = useState<string | null>(null)
-  const [confirm, setConfirm] = useState<"enrich" | "verify" | null>(null)
+  const [confirm, setConfirm] = useState<"enrich" | "verify" | "analyze" | null>(null)
+  const [intel, setIntel] = useState<AnalysisFilters>(NO_FILTERS)
+  const [showIntel, setShowIntel] = useState(false)
+  const [reportId, setReportId] = useState<string | null>(null)
 
   // Stored decision-maker data arrives with the search; lookups only start on click.
   const enrichment = useEnrichment(data.enrichments)
-  const { enrichments, activity, failures, bulk, statusOf, enrich, verify } = enrichment
+  const { enrichments, activity, failures, bulk, statusOf } = enrichment
+
+  // Stored analyses arrive with the search too; a website is only fetched on click.
+  const analysis = useAnalysis(data.analyses)
+  const { analyses } = analysis
+  const intelActive = analysisFiltersActive(intel)
 
   const categoryLabels = useMemo(
     () => new Map(categories.map((c) => [c.id, c.label])),
@@ -163,6 +186,14 @@ export function ResultsView({
       if (query && !b.name.toLowerCase().includes(query)) return false
       if (!matchesPresence(b.website, website) || !matchesPresence(b.phone, phone)) return false
       if (b.prospect.score < floor) return false
+      if (intelActive) {
+        const stored = analyses.get(b.osmId)
+        const contact = enrichments.get(b.osmId)
+        const summary = stored && { ...stored.scores, status: stored.status }
+        if (!matchesFilters(intel, summary, { hasDecisionMaker: Boolean(contact?.person), hasEmail: Boolean(contact?.email) })) {
+          return false
+        }
+      }
       if (enrichmentFilter === "all") return true
       const status = statusOf(b.osmId)
       // A failed or running lookup still counts as "not enriched".
@@ -174,18 +205,28 @@ export function ResultsView({
     // Array.prototype.sort is stable, so ties keep the API's closest-first order.
     return [...list].sort((a, b) => {
       if (sort === "name") return nameCollator.compare(a.name, b.name)
-      return sort === "score-desc"
-        ? b.prospect.score - a.prospect.score
-        : a.prospect.score - b.prospect.score
+      if (sort === "score-asc") return a.prospect.score - b.prospect.score
+      if (sort !== "score-desc") {
+        const left = analyses.get(a.osmId)
+        const right = analyses.get(b.osmId)
+        const order = compareByAnalysis(
+          sort,
+          left && { ...left.scores, status: left.status },
+          right && { ...right.scores, status: right.status }
+        )
+        if (order !== 0) return order
+      }
+      return b.prospect.score - a.prospect.score
     })
-  }, [businesses, nameQuery, website, phone, minScore, enrichmentFilter, sort, statusOf])
+  }, [businesses, nameQuery, website, phone, minScore, enrichmentFilter, sort, statusOf, intel, intelActive, analyses, enrichments])
 
   const filtersActive =
     nameQuery.trim() !== "" ||
     website !== "any" ||
     phone !== "any" ||
     minScore !== "0" ||
-    enrichmentFilter !== "all"
+    enrichmentFilter !== "all" ||
+    intelActive
   const visibleSelected = visible.filter((b) => selected.has(b.osmId)).length
   const allVisibleSelected = visible.length > 0 && visibleSelected === visible.length
   const unsavedCount = businesses.filter((b) => !savedIds.has(b.osmId)).length
@@ -200,6 +241,7 @@ export function ResultsView({
     const e = enrichments.get(b.osmId)
     return e?.email && !e.verification
   })
+  const toAnalyze = selectedBusinesses.filter((b) => !analyses.has(b.osmId) && !analysis.activity.has(b.osmId))
 
   const toggle = useCallback((osmId: string, checked: boolean) => {
     setSelected((current) => {
@@ -227,6 +269,7 @@ export function ResultsView({
     setPhone("any")
     setMinScore("0")
     setEnrichmentFilter("all")
+    setIntel(NO_FILTERS)
   }
 
   const save = useCallback(
@@ -242,9 +285,39 @@ export function ResultsView({
 
   const view = useCallback((business: BusinessSearchResult) => setViewingId(business.osmId), [])
   const saveOne = useCallback((business: BusinessSearchResult) => save("single", [business]), [save])
+  const viewReport = useCallback((business: BusinessSearchResult) => setReportId(business.osmId), [])
+
+  // New contact data changes the Qualified Lead Score, so a stored analysis is
+  // re-qualified afterwards (from stored data: the website isn't fetched again).
+  const { refresh } = analysis
+  const { enrich: enrichOne, verify: verifyOne } = enrichment
+  const enrich = useCallback(
+    async (business: BusinessSearchResult) => {
+      await enrichOne(business)
+      if (analyses.has(business.osmId)) void refresh([business])
+    },
+    [enrichOne, analyses, refresh]
+  )
+  const verify = useCallback(
+    async (osmId: string) => {
+      await verifyOne(osmId)
+      const business = businesses.find((b) => b.osmId === osmId)
+      if (business && analyses.has(osmId)) void refresh([business])
+    },
+    [verifyOne, analyses, businesses, refresh]
+  )
+  async function enrichSelected() {
+    await enrichment.enrichMany(toEnrich)
+    void refresh(toEnrich.filter((b) => analyses.has(b.osmId)))
+  }
+  async function verifySelected() {
+    await enrichment.verifyMany(toVerify.map((b) => b.osmId))
+    void refresh(toVerify.filter((b) => analyses.has(b.osmId)))
+  }
 
   const viewing = viewingId ? businesses.find((b) => b.osmId === viewingId) ?? null : null
-  const busy = saving !== null || bulk !== null
+  const reporting = reportId ? businesses.find((b) => b.osmId === reportId) ?? null : null
+  const busy = saving !== null || bulk !== null || analysis.bulk !== null
 
   const rowProps = (business: ScoredBusiness) => ({
     business,
@@ -257,11 +330,17 @@ export function ResultsView({
     verifying: activity.get(business.osmId) === "verifying",
     disabled: bulk !== null,
     savingDisabled: busy,
+    analysis: analyses.get(business.osmId),
+    analysisActivity: analysis.activity.get(business.osmId),
+    analysisFailure: analysis.failures.get(business.osmId),
+    analysisDisabled: analysis.bulk !== null,
     onToggle: toggle,
     onView: view,
     onSave: saveOne,
     onEnrich: enrich,
     onVerify: verify,
+    onAnalyze: analysis.analyze,
+    onViewAnalysis: viewReport,
   })
 
   if (businesses.length === 0) {
@@ -367,11 +446,29 @@ export function ResultsView({
             onChange={setSort}
             active={false}
             options={SORT_LABELS}
-            className="col-span-2 sm:w-52"
+            className="sm:w-52"
             align="end"
           />
+          <Button
+            variant="outline"
+            size="sm"
+            className={cn("h-9 bg-background font-normal", intelActive && "border-primary/40")}
+            aria-expanded={showIntel || intelActive}
+            aria-controls="intelligence-filters"
+            onClick={() => setShowIntel((open) => !open)}
+          >
+            <SlidersHorizontal /> Intelligence filters
+          </Button>
         </div>
       </div>
+      {(showIntel || intelActive) && (
+        <div id="intelligence-filters" className="border-b bg-muted/20 px-5 py-3">
+          <AnalysisFilterBar filters={intel} onChange={setIntel} />
+          <p className="mt-2 text-xs text-muted-foreground">
+            Score filters only match businesses you have analyzed. Unanalyzed businesses have no score.
+          </p>
+        </div>
+      )}
 
       {visible.length === 0 ? (
         <EmptyState
@@ -411,7 +508,7 @@ export function ResultsView({
                       onCheckedChange={(c) => toggleAllVisible(c === true)}
                     />
                   </TableHead>
-                  {["Business", "Prospect Score", "Contact", "Decision Maker"].map((column) => (
+                  {["Business", "Prospect Score", "Contact", "Decision Maker", "Business Intelligence"].map((column) => (
                     <TableHead
                       key={column}
                       className="h-10 px-4 text-xs font-medium whitespace-nowrap text-muted-foreground"
@@ -456,12 +553,28 @@ export function ResultsView({
         count={selected.size}
         enrichCount={toEnrich.length}
         verifyCount={toVerify.length}
+        analyzeCount={toAnalyze.length}
         saving={saving === "selected"}
         busy={busy}
-        bulk={bulk}
+        progress={
+          bulk
+            ? {
+                label: bulk.kind === "enrich" ? "Finding decision makers..." : "Verifying emails...",
+                unit: bulk.kind === "enrich" ? "businesses processed" : "emails processed",
+                done: bulk.done,
+                total: bulk.total,
+              }
+            : analysis.bulk && {
+                label: "Analyzing businesses...",
+                unit: "businesses analyzed",
+                done: analysis.bulk.done,
+                total: analysis.bulk.total,
+              }
+        }
         onClear={() => setSelected(new Set())}
         onEnrich={() => setConfirm("enrich")}
         onVerify={() => setConfirm("verify")}
+        onAnalyze={() => setConfirm("analyze")}
         onSave={() => save("selected", selectedBusinesses)}
       />
 
@@ -470,7 +583,7 @@ export function ResultsView({
         onOpenChange={(open) => !open && setConfirm(null)}
         title="Find Decision Makers"
         confirmLabel="Continue"
-        onConfirm={() => enrichment.enrichMany(toEnrich)}
+        onConfirm={enrichSelected}
       >
         <p>
           You selected {toEnrich.length} {toEnrich.length === 1 ? "business" : "businesses"} without
@@ -489,11 +602,26 @@ export function ResultsView({
         onOpenChange={(open) => !open && setConfirm(null)}
         title={`Verify ${toVerify.length} ${toVerify.length === 1 ? "Email" : "Emails"}`}
         confirmLabel="Verify"
-        onConfirm={() => enrichment.verifyMany(toVerify.map((b) => b.osmId))}
+        onConfirm={verifySelected}
       >
         <p>Hunter will verify the selected email addresses.</p>
         <p>Emails that were already verified are not checked again.</p>
         <p className="font-medium text-foreground">This action may consume Hunter free credits.</p>
+      </ConfirmActionDialog>
+
+      <ConfirmActionDialog
+        open={confirm === "analyze"}
+        onOpenChange={(open) => !open && setConfirm(null)}
+        title={`Analyze ${toAnalyze.length} ${toAnalyze.length === 1 ? "Business" : "Businesses"}`}
+        confirmLabel="Analyze"
+        onConfirm={() => analysis.analyzeMany(toAnalyze)}
+      >
+        <p>
+          Each business&apos;s homepage is fetched once and checked for website, SEO and conversion
+          fundamentals. Businesses without a website get a business-data analysis.
+        </p>
+        <p>Results are saved, so the same website isn&apos;t fetched again when you come back.</p>
+        <p className="font-medium text-foreground">This is free and uses no provider credits.</p>
       </ConfirmActionDialog>
 
       <BusinessDetailsSheet
@@ -516,18 +644,41 @@ export function ResultsView({
         }
       >
         {viewing && (
-          <EnrichmentSections
-            prospect={viewing.prospect}
-            status={statusOf(viewing.osmId)}
-            enrichment={enrichments.get(viewing.osmId)}
-            failure={failures.get(viewing.osmId)}
-            verifying={activity.get(viewing.osmId) === "verifying"}
-            disabled={bulk !== null}
-            onEnrich={() => enrich(viewing)}
-            onVerify={() => verify(viewing.osmId)}
-          />
+          <>
+            <EnrichmentSections
+              prospect={viewing.prospect}
+              status={statusOf(viewing.osmId)}
+              enrichment={enrichments.get(viewing.osmId)}
+              failure={failures.get(viewing.osmId)}
+              verifying={activity.get(viewing.osmId) === "verifying"}
+              disabled={bulk !== null}
+              onEnrich={() => enrich(viewing)}
+              onVerify={() => verify(viewing.osmId)}
+            />
+            <AnalysisSummarySection
+              analysis={analyses.get(viewing.osmId)}
+              activity={analysis.activity.get(viewing.osmId)}
+              failure={analysis.failures.get(viewing.osmId)}
+              disabled={analysis.bulk !== null}
+              onAnalyze={() => analysis.analyze(viewing)}
+              onView={() => {
+                setViewingId(null)
+                setReportId(viewing.osmId)
+              }}
+            />
+          </>
         )}
       </BusinessDetailsSheet>
+
+      <AnalysisReportSheet
+        analysis={reporting ? analyses.get(reporting.osmId) ?? null : null}
+        enrichment={reporting ? enrichments.get(reporting.osmId) : undefined}
+        prospect={reporting?.prospect}
+        activity={reporting ? analysis.activity.get(reporting.osmId) : undefined}
+        disabled={analysis.bulk !== null}
+        onReanalyze={() => reporting && analysis.analyze(reporting, { reanalyze: true })}
+        onOpenChange={(open) => !open && setReportId(null)}
+      />
     </div>
   )
 }
@@ -538,42 +689,6 @@ function Notice({ text }: { text: string }) {
       <TriangleAlert className="mt-0.5 size-4 shrink-0 text-warning" aria-hidden />
       <p className="leading-snug">{text}</p>
     </div>
-  )
-}
-
-function FilterSelect<T extends string>({
-  label,
-  value,
-  onChange,
-  options,
-  active,
-  className,
-  align,
-}: {
-  label: string
-  value: T
-  onChange: (value: T) => void
-  options: Record<T, string>
-  active: boolean
-  className?: string
-  align?: "start" | "end"
-}) {
-  return (
-    <Select value={value} onValueChange={(v) => onChange(v as T)}>
-      <SelectTrigger
-        aria-label={label}
-        className={cn("w-full bg-background sm:w-40", active && "border-primary/40", className)}
-      >
-        <SelectValue />
-      </SelectTrigger>
-      <SelectContent align={align}>
-        {(Object.keys(options) as T[]).map((key) => (
-          <SelectItem key={key} value={key}>
-            {options[key]}
-          </SelectItem>
-        ))}
-      </SelectContent>
-    </Select>
   )
 }
 
@@ -597,6 +712,12 @@ type RowProps = Omit<DecisionMakerProps, "onEnrich" | "onVerify"> & {
   onSave: (business: BusinessSearchResult) => void
   onEnrich: (business: BusinessSearchResult) => void
   onVerify: (osmId: string) => void
+  analysis: AnalysisCellProps["analysis"]
+  analysisActivity: AnalysisCellProps["activity"]
+  analysisFailure: AnalysisCellProps["failure"]
+  analysisDisabled: boolean
+  onAnalyze: (business: BusinessSearchResult) => void
+  onViewAnalysis: (business: BusinessSearchResult) => void
 }
 
 function SavedBadge() {
@@ -645,6 +766,12 @@ const ResultRow = memo(function ResultRow({
   onSave,
   onEnrich,
   onVerify,
+  analysis,
+  analysisActivity,
+  analysisFailure,
+  analysisDisabled,
+  onAnalyze,
+  onViewAnalysis,
   ...decisionMaker
 }: RowProps) {
   const place = cityState(business.city, business.state)
@@ -701,6 +828,17 @@ const ResultRow = memo(function ResultRow({
           onVerify={() => onVerify(business.osmId)}
         />
       </TableCell>
+      <TableCell className="px-4 py-3 align-top whitespace-normal">
+        <AnalysisCell
+          analysis={analysis}
+          activity={analysisActivity}
+          failure={analysisFailure}
+          disabled={analysisDisabled}
+          businessName={business.name}
+          onAnalyze={() => onAnalyze(business)}
+          onView={() => onViewAnalysis(business)}
+        />
+      </TableCell>
       <TableCell className="px-4 py-2 pr-5 align-top">
         <div className="flex justify-end gap-0.5">
           <IconAction
@@ -743,6 +881,12 @@ const ResultCard = memo(function ResultCard({
   onSave,
   onEnrich,
   onVerify,
+  analysis,
+  analysisActivity,
+  analysisFailure,
+  analysisDisabled,
+  onAnalyze,
+  onViewAnalysis,
   ...decisionMaker
 }: RowProps) {
   const checkboxId = `select-${business.osmId}`
@@ -801,6 +945,19 @@ const ResultCard = memo(function ResultCard({
           />
         </div>
 
+        <div className="rounded-md border bg-muted/20 p-3 text-sm">
+          <p className="mb-1.5 text-xs font-medium text-muted-foreground">Business intelligence</p>
+          <AnalysisCell
+            analysis={analysis}
+            activity={analysisActivity}
+            failure={analysisFailure}
+            disabled={analysisDisabled}
+            businessName={business.name}
+            onAnalyze={() => onAnalyze(business)}
+            onView={() => onViewAnalysis(business)}
+          />
+        </div>
+
         <div className="flex flex-wrap gap-2">
           <Button variant="outline" size="sm" onClick={() => onView(business)}>
             <Eye /> View Details
@@ -816,27 +973,40 @@ const ResultCard = memo(function ResultCard({
   )
 })
 
+interface BarProgress {
+  label: string
+  /** e.g. "businesses analyzed". */
+  unit: string
+  done: number
+  total: number
+}
+
 function SelectionBar({
   count,
   enrichCount,
   verifyCount,
+  analyzeCount,
   saving,
   busy,
-  bulk,
+  progress,
   onClear,
   onEnrich,
   onVerify,
+  onAnalyze,
   onSave,
 }: {
   count: number
   enrichCount: number
   verifyCount: number
+  analyzeCount: number
   saving: boolean
   busy: boolean
-  bulk: BulkProgress | null
+  /** Set while a bulk run (enrichment, verification or analysis) is in progress. */
+  progress: BarProgress | null
   onClear: () => void
   onEnrich: () => void
   onVerify: () => void
+  onAnalyze: () => void
   onSave: () => void
 }) {
   // Portaled: an animated ancestor's transform would otherwise pin this
@@ -844,7 +1014,7 @@ function SelectionBar({
   if (typeof document === "undefined") return null
   return createPortal(
     <AnimatePresence>
-      {(count > 0 || bulk) && (
+      {(count > 0 || progress) && (
         <m.div
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
@@ -857,21 +1027,19 @@ function SelectionBar({
             aria-label="Selected businesses"
             className="pointer-events-auto w-full max-w-3xl overflow-hidden rounded-xl border bg-popover/95 text-popover-foreground shadow-lg backdrop-blur"
           >
-            {bulk ? (
+            {progress ? (
               <div className="px-4 py-3" role="status" aria-live="polite">
                 <div className="flex flex-wrap items-center gap-2 text-sm">
                   <Loader2 className="size-4 animate-spin text-primary" aria-hidden />
-                  <span className="font-medium">
-                    {bulk.kind === "enrich" ? "Finding decision makers..." : "Verifying emails..."}
-                  </span>
+                  <span className="font-medium">{progress.label}</span>
                   <span className="ml-auto text-muted-foreground tabular-nums">
-                    {bulk.done} of {bulk.total} {bulk.kind === "enrich" ? "businesses" : "emails"} processed
+                    {progress.done} of {progress.total} {progress.unit}
                   </span>
                 </div>
                 <div className="mt-2.5 h-1 overflow-hidden rounded-full bg-muted" aria-hidden>
                   <div
                     className="h-full rounded-full bg-primary transition-[width] duration-300"
-                    style={{ width: `${(bulk.done / bulk.total) * 100}%` }}
+                    style={{ width: `${(progress.done / progress.total) * 100}%` }}
                   />
                 </div>
               </div>
@@ -891,6 +1059,9 @@ function SelectionBar({
                   )}
                   <Button variant="outline" size="sm" onClick={onEnrich} disabled={busy || enrichCount === 0}>
                     <UserRoundSearch /> Find Decision Makers{enrichCount > 0 && ` (${enrichCount})`}
+                  </Button>
+                  <Button variant="outline" size="sm" onClick={onAnalyze} disabled={busy || analyzeCount === 0}>
+                    <ScanSearch /> Analyze Selected{analyzeCount > 0 && ` (${analyzeCount})`}
                   </Button>
                   <Button size="sm" onClick={onSave} disabled={busy}>
                     {saving ? <Loader2 className="animate-spin" aria-hidden /> : <BookmarkPlus />}

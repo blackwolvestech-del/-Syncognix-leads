@@ -51,6 +51,13 @@ export function usStateAbbreviation(value: string | null | undefined) {
   return US_STATE_ABBREVIATIONS.has(upper) ? upper : null
 }
 
+/** "tx" or "texas" → "Texas"; null when the value isn't a US state. */
+export function usStateName(value: string | null | undefined) {
+  const code = usStateAbbreviation(value)
+  const name = code && Object.keys(US_STATES).find((state) => US_STATES[state] === code)
+  return name ? name.replace(/\b[a-z]/g, (letter) => letter.toUpperCase()) : null
+}
+
 const CANADIAN_POSTCODE = /^[a-z]\d[a-z]\s?\d[a-z]\d$/i
 export const US_ZIP_CODE = /^\d{5}(?:-\d{4})?$/
 

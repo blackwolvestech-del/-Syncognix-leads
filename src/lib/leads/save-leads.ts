@@ -1,6 +1,7 @@
 import "server-only"
 
 import type { SupabaseClient } from "@supabase/supabase-js"
+import { scoreProspect } from "@/lib/scoring/prospect-score"
 import type { BusinessSearchResult, SaveLeadsResult } from "@/types/business"
 import type { Database } from "@/types/database"
 
@@ -52,15 +53,24 @@ export async function saveLeads(
     is_chain: businesses[index].chain ?? null,
   }))
 
+  // Stored so leads can be sorted and filtered by it (column added by the 20261008 migration).
+  const rowsWithScore = rowsWithChain.map((row, index) => ({
+    ...row,
+    prospect_score: scoreProspect(businesses[index]).score,
+  }))
+
   // ON CONFLICT DO NOTHING: only newly inserted rows come back.
-  const insert = (values: typeof rows | typeof rowsWithChain) =>
+  const insert = (values: typeof rows | typeof rowsWithChain | typeof rowsWithScore) =>
     supabase
       .from("leads")
       .upsert(values, { onConflict: "user_id,osm_id", ignoreDuplicates: true })
       .select("osm_id")
 
-  let { data, error } = await insert(rowsWithChain)
-  // Before that migration is applied the column doesn't exist; saving must still work.
+  let { data, error } = await insert(rowsWithScore)
+  // Before those migrations are applied the columns don't exist; saving must still work.
+  if (error && UNKNOWN_COLUMN_CODES.has(error.code ?? "")) {
+    ;({ data, error } = await insert(rowsWithChain))
+  }
   if (error && UNKNOWN_COLUMN_CODES.has(error.code ?? "")) {
     ;({ data, error } = await insert(rows))
   }

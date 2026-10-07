@@ -2,22 +2,22 @@ import { Check } from "lucide-react"
 import { SectionCard } from "@/components/shared/section-card"
 import { cn } from "@/lib/utils"
 
-const laterSteps = [
-  { title: "Analyze lead quality", done: false },
-  { title: "Generate outreach", done: false },
-]
+const laterSteps = [{ title: "Generate outreach", done: false }]
 
 export function GettingStarted({
   hasSearched,
   hasEmails,
+  hasAnalyses,
 }: {
   hasSearched: boolean
   hasEmails: boolean
+  hasAnalyses: boolean
 }) {
   const steps = [
     { title: "Create your account", done: true },
     { title: "Search for businesses", done: hasSearched },
     { title: "Find business emails", done: hasEmails },
+    { title: "Analyze lead quality", done: hasAnalyses },
     ...laterSteps,
   ]
   const completed = steps.filter((step) => step.done).length

@@ -17,6 +17,8 @@ export const RATE_LIMITS = {
   enrichment: 60,
   /** Email verifications per user per minute. */
   verification: 60,
+  /** Business analyses per user per minute (stored results included). */
+  analysis: 120,
 } as const
 
 export function enforceRateLimit(userId: string, kind: keyof typeof RATE_LIMITS) {

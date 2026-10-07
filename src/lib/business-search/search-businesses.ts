@@ -32,7 +32,7 @@ import { TtlCache } from "./ttl-cache"
 /** The search result before the route adds per-user data and prospect scores. */
 export type BusinessSearchOutcome = Omit<
   BusinessSearchSuccessResponse,
-  "businesses" | "savedOsmIds" | "enrichments"
+  "businesses" | "savedOsmIds" | "enrichments" | "analyses"
 > & { businesses: BusinessSearchResult[] }
 
 const PARTIAL_NOTICE =

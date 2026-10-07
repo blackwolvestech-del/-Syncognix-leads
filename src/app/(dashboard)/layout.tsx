@@ -1,5 +1,6 @@
 import { AppHeader } from "@/components/layout/app-header"
 import { AppSidebar } from "@/components/layout/app-sidebar"
+import { TimeZoneCookie } from "@/components/pipeline/time-zone-cookie"
 import { requireUser } from "@/lib/auth/user"
 
 export default async function DashboardLayout({ children }: LayoutProps<"/">) {
@@ -9,6 +10,7 @@ export default async function DashboardLayout({ children }: LayoutProps<"/">) {
 
   return (
     <div className="min-h-dvh">
+      <TimeZoneCookie />
       <a
         href="#main"
         className="sr-only focus:not-sr-only focus:fixed focus:top-3 focus:left-3 focus:z-50 focus:rounded-md focus:bg-card focus:px-3 focus:py-2 focus:text-sm focus:shadow-md focus:ring-2 focus:ring-ring"

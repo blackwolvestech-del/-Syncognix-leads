@@ -1,3 +1,4 @@
+import { getAnalysesByBusinessIds } from "@/lib/analysis/cache"
 import { createClient } from "@/lib/supabase/server"
 import {
   BusinessSearchError,
@@ -18,6 +19,7 @@ import type {
   BusinessSearchErrorResponse,
   BusinessSearchSuccessResponse,
 } from "@/types/business"
+import type { BusinessAnalysis } from "@/types/analysis"
 import type { LeadEnrichment } from "@/types/enrichment"
 
 // searchBusinesses caps itself at SEARCH_DEADLINE_MS (50s), under this limit.
@@ -84,15 +86,17 @@ export async function POST(request: Request) {
 
     // Results are only saved when the user chooses to (saveLeadsAction).
     // Here we just flag which ones they already have and log the search.
-    // Stored decision-maker data is attached too (read-only: searching never
-    // calls an enrichment provider).
+    // Stored decision-maker data and analyses are attached too (read-only:
+    // searching never calls an enrichment provider or fetches a website).
     let savedOsmIds: string[] = []
     let enrichments: LeadEnrichment[] = []
+    let analyses: BusinessAnalysis[] = []
     if (userId) {
       const osmIds = result.businesses.map((business) => business.osmId)
-      ;[savedOsmIds, enrichments] = await Promise.all([
+      ;[savedOsmIds, enrichments, analyses] = await Promise.all([
         getSavedOsmIds(supabase, userId, osmIds),
         getEnrichmentsByBusinessIds(supabase, userId, osmIds),
+        getAnalysesByBusinessIds(supabase, userId, osmIds),
         recordSearch(supabase, userId, {
           businessType: getCategoryLabel(result.query.normalizedBusinessType),
           location: query.location,
@@ -109,6 +113,7 @@ export async function POST(request: Request) {
       })),
       savedOsmIds,
       enrichments,
+      analyses,
     }
     return Response.json(response, { headers: NO_STORE })
   } catch (error) {

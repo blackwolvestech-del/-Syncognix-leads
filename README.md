@@ -1,6 +1,6 @@
 # Syncognix Leads
 
-Lead intelligence and outreach platform. **Step 1** — authentication, protected app shell and dashboard. **Step 2** — US business search (OpenStreetMap), selecting and saving businesses as leads, and a searchable Leads list. **Step 3** — prospect scoring, decision-maker lookup (Prospeo) and email verification (Hunter), both only on request and cached in Supabase. See [docs/step-3-enrichment.md](docs/step-3-enrichment.md).
+Lead intelligence and outreach platform. **Step 1** — authentication, protected app shell and dashboard. **Step 2** — US business search (OpenStreetMap), selecting and saving businesses as leads, and a searchable Leads list. **Step 3** — prospect scoring, decision-maker lookup (Prospeo) and email verification (Hunter), both only on request and cached in Supabase. See [docs/step-3-enrichment.md](docs/step-3-enrichment.md). **Step 4** — on-request business analysis (website, SEO and conversion fundamentals from the homepage), evidence-based service recommendations and a Qualified Lead Score, free and cached in Supabase. See [docs/step-4-analysis.md](docs/step-4-analysis.md). **Step 5** — lead management: lists, pipeline stages (table and Kanban views), priority, tags, notes, follow-ups, history, bulk actions and CSV export. See [docs/step-5-pipeline.md](docs/step-5-pipeline.md).
 
 ## Stack
 

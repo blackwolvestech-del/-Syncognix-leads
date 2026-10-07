@@ -80,3 +80,43 @@ export async function deleteLeadAction(id: string): Promise<DeleteLeadResult> {
   revalidatePath("/dashboard")
   return { ok: true }
 }
+
+export type DeleteLeadsResult = { ok: true; removed: number } | { ok: false; message: string }
+
+/** Most leads removed in one request (a full page of the Leads list is 25). */
+const MAX_BULK_DELETE = 200
+
+/** Removes several of the signed-in user's saved leads in one request. */
+export async function deleteLeadsAction(ids: string[]): Promise<DeleteLeadsResult> {
+  const failed = { ok: false as const, message: "We couldn't remove these leads. Please try again." }
+  if (!Array.isArray(ids)) return failed
+  const unique = [...new Set(ids)]
+  if (unique.length === 0 || unique.length > MAX_BULK_DELETE) return failed
+  if (!unique.every((id) => typeof id === "string" && UUID.test(id))) return failed
+
+  let removed = 0
+  try {
+    const { supabase, userId } = await getUserId()
+    if (!userId) return { ok: false, message: SIGNED_OUT }
+
+    // RLS enforces ownership; the user_id filter makes the intent explicit.
+    const { data, error } = await supabase
+      .from("leads")
+      .delete()
+      .eq("user_id", userId)
+      .in("id", unique)
+      .select("id")
+    if (error) {
+      console.error(`[leads] bulk delete failed: ${error.code ?? "unknown"} ${error.message}`)
+      return failed
+    }
+    removed = data?.length ?? 0
+  } catch (error) {
+    console.error("[leads] bulk delete action failed:", error)
+    return failed
+  }
+
+  revalidatePath("/leads")
+  revalidatePath("/dashboard")
+  return { ok: true, removed }
+}

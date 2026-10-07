@@ -1,3 +1,4 @@
+import type { BusinessAnalysis } from "./analysis"
 import type { LeadEnrichment, ProspectScore } from "./enrichment"
 
 export type OsmElementType = "node" | "way" | "relation"
@@ -77,6 +78,8 @@ export interface BusinessSearchSuccessResponse {
   savedOsmIds: string[]
   /** Stored decision-maker data the user already has for these results. */
   enrichments: LeadEnrichment[]
+  /** Stored business analyses the user already has for these results. */
+  analyses: BusinessAnalysis[]
 }
 
 export interface BusinessSearchErrorResponse {
